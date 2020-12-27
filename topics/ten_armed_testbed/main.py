@@ -5,35 +5,10 @@ import numpy as np
 from tqdm import tqdm
 
 
-def sample_average_estimate(rewards, actions, n_unique_actions):
-    """Sample-average method for estimating action values
-
-    Qt(a) := (sum of rewards when a taken prior to t) / (# of times a taken prior to t)
-
-    Parameters
-    ----------
-    rewards: numpy.ndarray
-        The array of rewards
-    actions: numpy.ndarray
-        The array of actions taken (actions must be labeled 0, ... n-1)
-    n_unique_actions: int
-        The number of possible unique actions
-
-    Returns
-    -------
-    numpy.ndarray
-        The list of estimate action values per action
-    """
-    value_estimates = []
-    for a in range(n_unique_actions):
-        mask = (actions == a)
-        numerator = rewards[mask].sum()
-        denominator = mask.sum()
-        value_estimates.append(numerator / denominator if denominator != 0 else 0)
-    return np.array(value_estimates)
-
-
 def run_k_arm_bandit(n_steps, n_arms, eps):
+    reward_total_per_action = np.zeros(n_arms)
+    action_counts = np.zeros(n_arms)
+
     # sample the true q* value per action from a unit Gaussian
     true_action_vals = np.random.randn(n_arms)
 
@@ -49,13 +24,16 @@ def run_k_arm_bandit(n_steps, n_arms, eps):
             action = np.random.randint(0, n_arms)
         else:  # exploitation: select the action with the highest current estimated value
             action = values.argmax()
-        actions_taken.append(action)
-        rewards_received.append(rewards[action])
+        curr_reward = rewards[action]
 
-        # update the estimated action-values using the sample average
-        values = sample_average_estimate(rewards=np.array(rewards_received),
-                                         actions=np.array(actions_taken),
-                                         n_unique_actions=n_arms)
+        actions_taken.append(action)
+        rewards_received.append(curr_reward)
+
+        # update the value estimates with the current reward
+        reward_total_per_action[action] += curr_reward
+        action_counts[action] += 1
+        nonzero_mask = (action_counts != 0)
+        values[nonzero_mask] = reward_total_per_action[nonzero_mask] / action_counts[nonzero_mask]
 
     return actions_taken, rewards_received, true_action_vals
 
