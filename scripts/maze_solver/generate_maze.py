@@ -13,7 +13,13 @@ GRID_WIDTH = 40
 
 
 class MazeGenerator:
-    def __init__(self, grid_height=GRID_HEIGHT, grid_width=GRID_WIDTH):
+    def __init__(self):
+        self.maze = None
+        self.grid_width = None
+        self.grid_height = None
+        self._walls = None
+
+    def reset_maze(self, grid_height, grid_width):
         self.grid_height = grid_height
         self.grid_width = grid_width
         self.maze = np.full((self.grid_height, self.grid_width), UNVISITED)
@@ -62,7 +68,9 @@ class MazeGenerator:
         except IndexError:
             pass
 
-    def __call__(self):
+    def __call__(self, grid_height, grid_width):
+        self.reset_maze(grid_height, grid_width)
+
         # random starting point
         start_y = np.random.randint(1, self.grid_height - 1)
         start_x = np.random.randint(1, self.grid_width - 1)
@@ -143,8 +151,8 @@ class MazeGenerator:
 
 
 if __name__ == '__main__':
-    create_maze = MazeGenerator(50, 100)
-    m = create_maze()
+    create_maze = MazeGenerator()
+    m = create_maze(50, 100)
     m = np.where(m == 0, 1, 0)
     plt.imshow(m, cmap='gray')
     plt.axis('off')
