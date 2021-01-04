@@ -1,4 +1,5 @@
 """This script defines a class for generating random mazes using Prim's algorithm"""
+
 import random
 
 import matplotlib.pyplot as plt
@@ -13,6 +14,7 @@ GRID_WIDTH = 40
 
 
 class MazeGenerator:
+    """Generate a random maze using Prim's algorithm"""
     def __init__(self):
         self.maze = None
         self.grid_width = None
