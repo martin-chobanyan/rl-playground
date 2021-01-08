@@ -1,10 +1,14 @@
-"""This file contains the main BlackjackGame object"""
+"""This file contains the main BlackjackGame object, a one-on-one game with no splitting or doubling-down"""
 
 import random
 
 CARDS = [
     '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'
 ]
+
+PLAYER_WIN = 1
+DRAW_GAME = 0
+PLAYER_LOSE = -1
 
 
 def draw_card():
@@ -27,8 +31,8 @@ def get_hand_value(hand):
 
     Returns
     -------
-    int or tuple
-        The integer value except if a usable ace is present, in which case it is a tuple of two possible values
+    int
+        The integer hand value (highest value is returned without going over 21 if an ace is present)
     """
     hand_value = 0
     ace = False
@@ -43,14 +47,30 @@ def get_hand_value(hand):
                 card_value = 10
         hand_value += card_value
     if ace:
-        return hand_value, hand_value + 10
+        alt_hand_value = hand_value + 10
+        if alt_hand_value <= 21:
+            return alt_hand_value
     return hand_value
 
 
+def check_blackjack(hand):
+    return get_hand_value(hand) == 21
+
+
+def check_bust(hand):
+    return get_hand_value(hand) > 21
+
+
+def check_under_17(hand):
+    return get_hand_value(hand) < 17
+
+
 class BlackjackGame:
-    def __init__(self):
+    def __init__(self, interactive=True):
         self.player_hand = []
         self.dealer_hand = []
+        self.hidden_dealer = True
+        self.interacive = interactive
 
     @staticmethod
     def parse_response(response):
@@ -80,32 +100,76 @@ class BlackjackGame:
         card = draw_card()
         self.dealer_hand.append(card)
 
-    def start_game(self):
-        self.deal_cards()
-        print(self.player_hand)
-        print(self.dealer_hand)
+    def show_current_state(self):
+        if self.interacive:
+            print('--------------------------------------')
+            print(f'Your hand: {self.player_hand}')
+            if self.hidden_dealer:
+                print(f'Dealer hand: [{self.dealer_hand[0]}, ?]')
+            else:
+                print(f'Dealer hand: {self.dealer_hand}')
+            print('--------------------------------------')
 
-        finished_game = False
+    def play(self):
+        # deal the starting cards
+        self.hidden_dealer = True
+        self.deal_cards()
+        self.show_current_state()
+
+        # check for a natural hand
         player_turn = True
-        while not finished_game:
-            if player_turn:
+        if check_blackjack(self.player_hand):
+            print("Blackjack! Let's see what the dealer has...")
+            player_turn = False
+
+        # player's turn
+        if player_turn:
+            end_turn = False
+            while not end_turn:
                 response = input('Would you like to hit (y/n)?')
                 hit_me = self.parse_response(response)
                 if hit_me:
-                    print('Hit!')
+                    self.hit_player()
+                    if check_blackjack(self.player_hand):
+                        print("Blackjack! Let's see what the dealer has...")
+                        end_turn = True
+                    elif check_bust(self.player_hand):
+                        self.show_current_state()
+                        return PLAYER_LOSE
+                    self.show_current_state()
                 else:
-                    print('Stick!')
-            else:
-                pass
+                    end_turn = True
+
+        # dealer's turn
+        self.hidden_dealer = False
+        under_17 = check_under_17(self.dealer_hand)
+        while under_17:
+            self.show_current_state()
+            print('Dealer chooses to hit...')
+            self.hit_dealer()
+            under_17 = check_under_17(self.dealer_hand)
+        self.show_current_state()
+
+        # check the dealer's final hand
+        if check_bust(self.dealer_hand):
+            return PLAYER_WIN
+        else:
+            player_hand_value = self.get_player_hand_value()
+            dealer_hand_value = self.get_dealer_hand_value()
+            if player_hand_value > dealer_hand_value:
+                return PLAYER_WIN
+            if player_hand_value < dealer_hand_value:
+                return PLAYER_LOSE
+            return DRAW_GAME
 
 
 if __name__ == '__main__':
     game = BlackjackGame()
-    # game.start_game()
+    result = game.play()
 
-    for _ in range(10):
-        hand = [draw_card(), draw_card(), draw_card()]
-        print(hand)
-        print(get_hand_value(hand))
-        print()
-    print()
+    if result == PLAYER_WIN:
+        print('Congratulations, you won!')
+    elif result == PLAYER_LOSE:
+        print('Sorry, you lost!')
+    elif result == DRAW_GAME:
+        print('It looks like you tied!')
