@@ -4,9 +4,23 @@ import random
 
 CARDS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 
+# game result codes
 PLAYER_WIN = 1
 DRAW_GAME = 0
 PLAYER_LOSE = -1
+
+
+def get_all_states():
+    states = []
+    # the player should always hit with a value 11 or less
+    # thus a policy onl needs to be defined for states 12, 13, ... 20
+    for player_hand_value in range(12, 21):
+        # the value of the dealer's visible card (ace is treated as one)
+        for dealer_card_value in range(1, 11):
+            # the third element is whether or not the player has a usable ace
+            states.append((player_hand_value, dealer_card_value, True))
+            states.append((player_hand_value, dealer_card_value, False))
+    return states
 
 
 def draw_card():
@@ -91,11 +105,10 @@ def print_result(game_result):
 
 
 class BlackjackGame:
-    def __init__(self, interactive=True):
+    def __init__(self):
         self.player_hand = []
         self.dealer_hand = []
         self.hidden_dealer = True
-        self.interacive = interactive
 
     @staticmethod
     def parse_response(response):
@@ -129,14 +142,13 @@ class BlackjackGame:
         self.dealer_hand.append(card)
 
     def show_current_state(self):
-        if self.interacive:
-            print('--------------------------------------')
-            print(f'Your hand: {self.player_hand}')
-            if self.hidden_dealer:
-                print(f"Dealer hand: ['{self.dealer_hand[0]}', ?]")
-            else:
-                print(f'Dealer hand: {self.dealer_hand}')
-            print('--------------------------------------')
+        print('--------------------------------------')
+        print(f'Your hand: {self.player_hand}')
+        if self.hidden_dealer:
+            print(f"Dealer hand: ['{self.dealer_hand[0]}', ?]")
+        else:
+            print(f'Dealer hand: {self.dealer_hand}')
+        print('--------------------------------------')
 
     def player_turn(self, hit_me):
         """
@@ -158,22 +170,30 @@ class BlackjackGame:
                 self.show_current_state()
                 return PLAYER_LOSE
             self.show_current_state()
-        # return self.get_player_hand_value(), self.get_visible_dealer_value(), contains_usable_ace(self.player_hand)
+        return self.get_player_hand_value(), self.get_visible_dealer_value(), has_usable_ace(self.player_hand)
 
-    def play(self):
+    def play(self, policy_fn=None):
+        interactive = (policy_fn is None)
+
         # deal the starting cards
         self.hidden_dealer = True
         self.deal_cards()
-        self.show_current_state()
+        if interactive:
+            self.show_current_state()
 
         # check for a natural hand
         if check_blackjack(self.player_hand):
-            print("Blackjack! Let's see what the dealer has...")
+            if interactive:
+                print("Blackjack! Let's see what the dealer has...")
         else:
             end_turn = False
             while not end_turn:
-                response = input('Would you like to hit (y/n)?')
-                hit_me = self.parse_response(response)
+                if interactive:
+                    response = input('Would you like to hit (y/n)?')
+                    hit_me = self.parse_response(response)
+                else:
+                    hit_me = policy_fn()
+
                 if hit_me:
                     self.hit_player()
                     if check_blackjack(self.player_hand):
@@ -210,18 +230,6 @@ class BlackjackGame:
 
 
 if __name__ == '__main__':
-    game = BlackjackGame(interactive=False)
+    game = BlackjackGame()
     # result = game.play()
     # print_result(result)
-
-    # dumb policy: always hit
-    policy = lambda x: True
-    # while game is not over, keep acting
-    # Blackjack object
-    # starts game, returns current state
-    # policy takes the state and provides an action
-
-    # probably will need to split the game `play` method into two or more separate pieces
-    # one which sets the game up (independent of policy)
-    # one which takes an action (hit or no?) as an argument and returns the state and reward (current hand value, dealer card, ace or no?)
-    #
