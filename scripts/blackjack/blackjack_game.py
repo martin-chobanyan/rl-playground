@@ -1,6 +1,7 @@
 """This file contains the main BlackjackGame object, a one-on-one game with no splitting or doubling-down"""
 
 import random
+import time
 
 from game_utils import display_game_history
 
@@ -94,20 +95,11 @@ def print_result(game_result):
     print()
 
 
-class BlackjackGame:
+class AbstractBlackjackGame:
     def __init__(self):
         self.player_hand = []
         self.dealer_hand = []
         self.hidden_dealer = True
-
-    @staticmethod
-    def parse_response(response):
-        if response.lower() in ['y', 'yes']:
-            return True
-        elif response.lower() in ['n', 'no']:
-            return False
-        else:
-            raise ValueError('You must say yes or no')
 
     def deal_cards(self):
         """Deal the starting cards to both the player and the dealer"""
@@ -131,44 +123,103 @@ class BlackjackGame:
         card = draw_card()
         self.dealer_hand.append(card)
 
+    def play(self):
+        raise NotImplementedError
+
+
+class InteractiveBlackjackGame(AbstractBlackjackGame):
+    @staticmethod
+    def parse_response(response):
+        if response.lower() in ['y', 'yes']:
+            return True
+        elif response.lower() in ['n', 'no']:
+            return False
+        else:
+            raise ValueError('You must say yes or no')
+
+    def show_hands(self):
+        print('--------------------------------------')
+        print(f'Your hand: {self.player_hand}')
+        if self.hidden_dealer:
+            print(f"Dealer hand: ['{self.dealer_hand[0]}', ?]")
+        else:
+            print(f'Dealer hand: {self.dealer_hand}')
+        print('--------------------------------------')
+
+    def play(self):
+        # deal the starting cards
+        self.hidden_dealer = True
+        self.deal_cards()
+        self.show_hands()
+
+        # check for a natural hand
+        if check_blackjack(self.player_hand):
+            print("Blackjack! Let's see what the dealer has...")
+        else:
+            end_turn = False
+            while not end_turn:
+                response = input('Would you like to hit (yes/no)?')
+                hit_me = self.parse_response(response)
+                if hit_me:
+                    self.hit_player()
+                    if check_blackjack(self.player_hand):
+                        end_turn = True
+                        print("Blackjack! Let's see what the dealer has...")
+                    elif check_bust(self.player_hand):
+                        self.show_hands()
+                        return PLAYER_LOSE
+                    self.show_hands()
+                else:
+                    end_turn = True
+                    print("You chose to stick. Let's see what the dealer has...")
+
+        # dealer's turn
+        self.hidden_dealer = False
+        under_17 = check_under_17(self.dealer_hand)
+        while under_17:
+            self.show_hands()
+            print('Dealer chooses to hit...')
+            time.sleep(3)
+            self.hit_dealer()
+            under_17 = check_under_17(self.dealer_hand)
+        self.show_hands()
+
+        # check the dealer's final hand
+        if check_bust(self.dealer_hand):
+            return PLAYER_WIN
+        else:
+            player_hand_value = self.get_player_hand_value()
+            dealer_hand_value = self.get_dealer_hand_value()
+            if player_hand_value > dealer_hand_value:
+                return PLAYER_WIN
+            if player_hand_value < dealer_hand_value:
+                return PLAYER_LOSE
+            return DRAW_GAME
+
+
+class AutoBlackjackGame(AbstractBlackjackGame):
+    def __init__(self, policy):
+        super().__init__()
+        self.policy = policy
+
     def get_state(self):
         return self.get_player_hand_value(), self.get_visible_dealer_value(), has_usable_ace(self.player_hand)
 
-    def show_hands(self, interactive):
-        if interactive:
-            print('--------------------------------------')
-            print(f'Your hand: {self.player_hand}')
-            if self.hidden_dealer:
-                print(f"Dealer hand: ['{self.dealer_hand[0]}', ?]")
-            else:
-                print(f'Dealer hand: {self.dealer_hand}')
-            print('--------------------------------------')
-
-    def play(self, policy_fn=None):
-        # set up
-        interactive = (policy_fn is None)
+    def play(self):
+        # deal the starting cards
+        self.deal_cards()
         states = []
         actions = []
         rewards = []
 
-        # deal the starting cards
-        self.hidden_dealer = True
-        self.deal_cards()
-        self.show_hands(interactive=interactive)
-
-        # check for a natural hand
+        # end the game if the player has a natural hand (no point from a state-action perspective)
         if check_blackjack(self.player_hand):
-            if interactive:
-                print("Blackjack! Let's see what the dealer has...")
+            return None, (states, actions, history)
         else:
             end_turn = False
             while not end_turn:
                 states.append(self.get_state())
-                if interactive:
-                    response = input('Would you like to hit (yes/no)?')
-                    hit_me = self.parse_response(response)
-                else:
-                    hit_me = policy_fn(states[-1])
+                hit_me = self.policy(states[-1])
                 actions.append(hit_me)
                 rewards.append(0)
 
@@ -176,25 +227,17 @@ class BlackjackGame:
                     self.hit_player()
                     if check_blackjack(self.player_hand):
                         end_turn = True
-                        if interactive:
-                            print("Blackjack! Let's see what the dealer has...")
                     elif check_bust(self.player_hand):
-                        self.show_hands(interactive=interactive)
                         rewards[-1] = PLAYER_LOSE
                         return PLAYER_LOSE, (states, actions, rewards)
-                    self.show_hands(interactive=interactive)
                 else:
                     end_turn = True
 
         # dealer's turn
-        self.hidden_dealer = False
         under_17 = check_under_17(self.dealer_hand)
         while under_17:
-            self.show_hands(interactive=interactive)
-            print('Dealer chooses to hit...')
             self.hit_dealer()
             under_17 = check_under_17(self.dealer_hand)
-        self.show_hands(interactive=interactive)
 
         # check the dealer's final hand
         if check_bust(self.dealer_hand):
@@ -216,7 +259,10 @@ class BlackjackGame:
 
 
 if __name__ == '__main__':
-    game = BlackjackGame()
-    result, history = game.play()
+    game = InteractiveBlackjackGame()
+    result = game.play()
     print_result(result)
-    display_game_history(*history)
+
+    # game = AutoBlackjackGame(lambda x: False)
+    # history = game.play()
+    # display_game_history(*history)
