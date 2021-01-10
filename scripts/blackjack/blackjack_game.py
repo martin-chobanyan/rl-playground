@@ -2,6 +2,8 @@
 
 import random
 
+from game_utils import display_game_history
+
 CARDS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 
 # game result codes
@@ -20,13 +22,15 @@ def draw_card():
     return random.choice(CARDS)
 
 
-def get_hand_value(hand):
+def get_hand_value(hand, ace_equals_one=False):
     """Get the blackjack value of a hand
 
     Parameters
     ----------
     hand: list[str]
         A list of the string card identifiers
+    ace_equals_one: bool, optional
+        If true, then all Aces will be counted as ones
 
     Returns
     -------
@@ -34,18 +38,18 @@ def get_hand_value(hand):
         The integer hand value (highest value is returned without going over 21 if an ace is present)
     """
     hand_value = 0
-    ace = False
+    has_ace = False
     for card in hand:
         try:
             card_value = int(card)
         except ValueError:
             if card == 'A':
-                ace = True
+                has_ace = True
                 card_value = 1
             else:
                 card_value = 10
         hand_value += card_value
-    if ace:
+    if has_ace and not ace_equals_one:
         alt_hand_value = hand_value + 10
         if alt_hand_value <= 21:
             return alt_hand_value
@@ -63,11 +67,9 @@ def has_usable_ace(hand):
     -------
     bool
     """
-    for i, card in enumerate(hand):
-        if card == 'A':
-            if get_hand_value(hand[:i]) + 11 <= 21:
-                return True
-    return False
+    has_ace = any(card == 'A' for card in hand)
+    hand_value = get_hand_value(hand, ace_equals_one=True)
+    return has_ace and (hand_value + 10 <= 21)
 
 
 def check_blackjack(hand):
@@ -89,6 +91,7 @@ def print_result(game_result):
         print('Sorry, you lost!')
     elif game_result == DRAW_GAME:
         print('It looks like you tied!')
+    print()
 
 
 class BlackjackGame:
@@ -128,45 +131,30 @@ class BlackjackGame:
         card = draw_card()
         self.dealer_hand.append(card)
 
-    def show_current_state(self):
-        print('--------------------------------------')
-        print(f'Your hand: {self.player_hand}')
-        if self.hidden_dealer:
-            print(f"Dealer hand: ['{self.dealer_hand[0]}', ?]")
-        else:
-            print(f'Dealer hand: {self.dealer_hand}')
-        print('--------------------------------------')
-
-    def player_turn(self, hit_me):
-        """
-
-        Parameters
-        ----------
-        hit_me: bool
-
-        Returns
-        -------
-        tuple
-            The current state of the game
-        """
-        if hit_me:
-            self.hit_player()
-            if check_blackjack(self.player_hand):
-                print("Blackjack! Let's see what the dealer has...")
-            elif check_bust(self.player_hand):
-                self.show_current_state()
-                return PLAYER_LOSE
-            self.show_current_state()
+    def get_state(self):
         return self.get_player_hand_value(), self.get_visible_dealer_value(), has_usable_ace(self.player_hand)
 
+    def show_hands(self, interactive):
+        if interactive:
+            print('--------------------------------------')
+            print(f'Your hand: {self.player_hand}')
+            if self.hidden_dealer:
+                print(f"Dealer hand: ['{self.dealer_hand[0]}', ?]")
+            else:
+                print(f'Dealer hand: {self.dealer_hand}')
+            print('--------------------------------------')
+
     def play(self, policy_fn=None):
+        # set up
         interactive = (policy_fn is None)
+        states = []
+        actions = []
+        rewards = []
 
         # deal the starting cards
         self.hidden_dealer = True
         self.deal_cards()
-        if interactive:
-            self.show_current_state()
+        self.show_hands(interactive=interactive)
 
         # check for a natural hand
         if check_blackjack(self.player_hand):
@@ -175,21 +163,26 @@ class BlackjackGame:
         else:
             end_turn = False
             while not end_turn:
+                states.append(self.get_state())
                 if interactive:
-                    response = input('Would you like to hit (y/n)?')
+                    response = input('Would you like to hit (yes/no)?')
                     hit_me = self.parse_response(response)
                 else:
-                    hit_me = policy_fn()
+                    hit_me = policy_fn(states[-1])
+                actions.append(hit_me)
+                rewards.append(0)
 
                 if hit_me:
                     self.hit_player()
                     if check_blackjack(self.player_hand):
-                        print("Blackjack! Let's see what the dealer has...")
                         end_turn = True
+                        if interactive:
+                            print("Blackjack! Let's see what the dealer has...")
                     elif check_bust(self.player_hand):
-                        self.show_current_state()
-                        return PLAYER_LOSE
-                    self.show_current_state()
+                        self.show_hands(interactive=interactive)
+                        rewards[-1] = PLAYER_LOSE
+                        return PLAYER_LOSE, (states, actions, rewards)
+                    self.show_hands(interactive=interactive)
                 else:
                     end_turn = True
 
@@ -197,26 +190,33 @@ class BlackjackGame:
         self.hidden_dealer = False
         under_17 = check_under_17(self.dealer_hand)
         while under_17:
-            self.show_current_state()
+            self.show_hands(interactive=interactive)
             print('Dealer chooses to hit...')
             self.hit_dealer()
             under_17 = check_under_17(self.dealer_hand)
-        self.show_current_state()
+        self.show_hands(interactive=interactive)
 
         # check the dealer's final hand
         if check_bust(self.dealer_hand):
-            return PLAYER_WIN
+            rewards[-1] = PLAYER_WIN
+            return PLAYER_WIN, (states, actions, rewards)
         else:
             player_hand_value = self.get_player_hand_value()
             dealer_hand_value = self.get_dealer_hand_value()
+
             if player_hand_value > dealer_hand_value:
-                return PLAYER_WIN
+                rewards[-1] = PLAYER_WIN
+                return PLAYER_WIN, (states, actions, rewards)
+
             if player_hand_value < dealer_hand_value:
-                return PLAYER_LOSE
-            return DRAW_GAME
+                rewards[-1] = PLAYER_LOSE
+                return PLAYER_LOSE, (states, actions, rewards)
+
+            return DRAW_GAME, (states, actions, rewards)
 
 
 if __name__ == '__main__':
     game = BlackjackGame()
-    # result = game.play()
-    # print_result(result)
+    result, history = game.play()
+    print_result(result)
+    display_game_history(*history)

@@ -11,10 +11,11 @@ def get_all_states():
     return states
 
 
-def get_state_index():
-    states = get_all_states()
-    return dict(zip(states, range(len(states))))
-
-
-if __name__ == '__main__':
-    print(get_state_index())
+def display_game_history(states, actions, rewards):
+    for s, a, r in zip(states, actions, rewards):
+        print(f'Player hand value: {s[0]}')
+        print(f'Dealer card value: {s[1]}')
+        print(f'Usable ace: {s[2]}')
+        print(f'Hit: {a}')
+        print(f'Reward: {r}')
+        print()
