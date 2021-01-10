@@ -22,18 +22,23 @@ def on_policy_monte_carlo(n_episodes, eps=0.1):
     game = BlackjackGame()
     policy = BlackjackPolicy()
 
-    # get the game history (sequence of states, actions, and rewards taken)
-    game_result, (states, actions, rewards) = game.play(policy)
+    n_played = 0
+    while n_played < n_episodes:
+        # get the game history (sequence of states, actions, and rewards taken)
+        game_result, (states, actions, rewards) = game.play(policy)
 
 
 
-    return
+
+
+        if len(states) > 0:
+            n_played += 1
 
 
 if __name__ == '__main__':
-    states = get_all_states()
+    state_space = get_all_states()
     policy_fn = BlackjackPolicy()
-    for state in states:
+    for state in state_space:
         print(state)
         print(policy_fn(state))
         print()

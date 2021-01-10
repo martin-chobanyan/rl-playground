@@ -3,7 +3,7 @@
 import random
 import time
 
-from game_utils import display_game_history
+from game_utils import display_game_history, enumerate_states
 
 CARDS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 
@@ -201,9 +201,21 @@ class AutoBlackjackGame(AbstractBlackjackGame):
     def __init__(self, policy):
         super().__init__()
         self.policy = policy
+        self.state_to_id = enumerate_states()
 
-    def get_state(self):
-        return self.get_player_hand_value(), self.get_visible_dealer_value(), has_usable_ace(self.player_hand)
+    def get_state_id(self):
+        """Get the ID of the current state
+
+        Returns
+        -------
+        int or None
+            A None is returned if the state is trivial (i.e. not an official state in the state-action value table)
+        """
+        player_hand_value = self.get_player_hand_value()
+        dealer_card_value = self.get_visible_dealer_value()
+        usable_ace = has_usable_ace(self.player_hand)
+        state = (player_hand_value, dealer_card_value, usable_ace)
+        return self.state_to_id[state]
 
     def play(self):
         # deal the starting cards
@@ -214,11 +226,11 @@ class AutoBlackjackGame(AbstractBlackjackGame):
 
         # end the game if the player has a natural hand (no point from a state-action perspective)
         if check_blackjack(self.player_hand):
-            return None, (states, actions, history)
+            return states, actions, rewards
         else:
             end_turn = False
             while not end_turn:
-                states.append(self.get_state())
+                states.append(self.get_state_id())
                 hit_me = self.policy(states[-1])
                 actions.append(hit_me)
                 rewards.append(0)
@@ -229,7 +241,7 @@ class AutoBlackjackGame(AbstractBlackjackGame):
                         end_turn = True
                     elif check_bust(self.player_hand):
                         rewards[-1] = PLAYER_LOSE
-                        return PLAYER_LOSE, (states, actions, rewards)
+                        return states, actions, rewards
                 else:
                     end_turn = True
 
@@ -242,27 +254,26 @@ class AutoBlackjackGame(AbstractBlackjackGame):
         # check the dealer's final hand
         if check_bust(self.dealer_hand):
             rewards[-1] = PLAYER_WIN
-            return PLAYER_WIN, (states, actions, rewards)
+            return states, actions, rewards
         else:
             player_hand_value = self.get_player_hand_value()
             dealer_hand_value = self.get_dealer_hand_value()
 
             if player_hand_value > dealer_hand_value:
                 rewards[-1] = PLAYER_WIN
-                return PLAYER_WIN, (states, actions, rewards)
+                return states, actions, rewards
 
             if player_hand_value < dealer_hand_value:
                 rewards[-1] = PLAYER_LOSE
-                return PLAYER_LOSE, (states, actions, rewards)
-
-            return DRAW_GAME, (states, actions, rewards)
+                return states, actions, rewards
+        return states, actions, rewards
 
 
 if __name__ == '__main__':
-    game = InteractiveBlackjackGame()
-    result = game.play()
-    print_result(result)
-
-    # game = AutoBlackjackGame(lambda x: False)
-    # history = game.play()
-    # display_game_history(*history)
+    # game = InteractiveBlackjackGame()
+    # result = game.play()
+    # print_result(result)
+    #
+    game = AutoBlackjackGame(lambda x: False)
+    history = game.play()
+    display_game_history(*history)
