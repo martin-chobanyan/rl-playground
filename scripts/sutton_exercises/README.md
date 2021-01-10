@@ -10,3 +10,4 @@ using the sample-average action-value method with three different settings (gree
 ### Gambler's Problem
 
 This script provides a solution to Exercise 4.9 (the Gambler's Problem). In this exercise we use dynamic programming and value iteration in order to approximate the optimal policy and value function associated with the Gambler's Problem (betting on a coin flip).
+

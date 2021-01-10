@@ -2,9 +2,7 @@
 
 import random
 
-CARDS = [
-    '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'
-]
+CARDS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 
 PLAYER_WIN = 1
 DRAW_GAME = 0
@@ -53,6 +51,24 @@ def get_hand_value(hand):
     return hand_value
 
 
+def has_usable_ace(hand):
+    """Checks if a hand contains a usable ace (one that can be counted as an 11 without busting)
+
+    Parameters
+    ----------
+    hand: list[str]
+
+    Returns
+    -------
+    bool
+    """
+    for i, card in enumerate(hand):
+        if card == 'A':
+            if get_hand_value(hand[:i]) + 11 <= 21:
+                return True
+    return False
+
+
 def check_blackjack(hand):
     return get_hand_value(hand) == 21
 
@@ -63,6 +79,15 @@ def check_bust(hand):
 
 def check_under_17(hand):
     return get_hand_value(hand) < 17
+
+
+def print_result(game_result):
+    if game_result == PLAYER_WIN:
+        print('Congratulations, you won!')
+    elif game_result == PLAYER_LOSE:
+        print('Sorry, you lost!')
+    elif game_result == DRAW_GAME:
+        print('It looks like you tied!')
 
 
 class BlackjackGame:
@@ -92,6 +117,9 @@ class BlackjackGame:
     def get_dealer_hand_value(self):
         return get_hand_value(self.dealer_hand)
 
+    def get_visible_dealer_value(self):
+        return get_hand_value([self.dealer_hand[0]])
+
     def hit_player(self):
         card = draw_card()
         self.player_hand.append(card)
@@ -105,10 +133,32 @@ class BlackjackGame:
             print('--------------------------------------')
             print(f'Your hand: {self.player_hand}')
             if self.hidden_dealer:
-                print(f'Dealer hand: [{self.dealer_hand[0]}, ?]')
+                print(f"Dealer hand: ['{self.dealer_hand[0]}', ?]")
             else:
                 print(f'Dealer hand: {self.dealer_hand}')
             print('--------------------------------------')
+
+    def player_turn(self, hit_me):
+        """
+
+        Parameters
+        ----------
+        hit_me: bool
+
+        Returns
+        -------
+        tuple
+            The current state of the game
+        """
+        if hit_me:
+            self.hit_player()
+            if check_blackjack(self.player_hand):
+                print("Blackjack! Let's see what the dealer has...")
+            elif check_bust(self.player_hand):
+                self.show_current_state()
+                return PLAYER_LOSE
+            self.show_current_state()
+        # return self.get_player_hand_value(), self.get_visible_dealer_value(), contains_usable_ace(self.player_hand)
 
     def play(self):
         # deal the starting cards
@@ -117,13 +167,9 @@ class BlackjackGame:
         self.show_current_state()
 
         # check for a natural hand
-        player_turn = True
         if check_blackjack(self.player_hand):
             print("Blackjack! Let's see what the dealer has...")
-            player_turn = False
-
-        # player's turn
-        if player_turn:
+        else:
             end_turn = False
             while not end_turn:
                 response = input('Would you like to hit (y/n)?')
@@ -164,12 +210,18 @@ class BlackjackGame:
 
 
 if __name__ == '__main__':
-    game = BlackjackGame()
-    result = game.play()
+    game = BlackjackGame(interactive=False)
+    # result = game.play()
+    # print_result(result)
 
-    if result == PLAYER_WIN:
-        print('Congratulations, you won!')
-    elif result == PLAYER_LOSE:
-        print('Sorry, you lost!')
-    elif result == DRAW_GAME:
-        print('It looks like you tied!')
+    # dumb policy: always hit
+    policy = lambda x: True
+    # while game is not over, keep acting
+    # Blackjack object
+    # starts game, returns current state
+    # policy takes the state and provides an action
+
+    # probably will need to split the game `play` method into two or more separate pieces
+    # one which sets the game up (independent of policy)
+    # one which takes an action (hit or no?) as an argument and returns the state and reward (current hand value, dealer card, ace or no?)
+    #
