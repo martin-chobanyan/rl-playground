@@ -1,98 +1,8 @@
 """This file contains the main BlackjackGame object, a one-on-one game with no splitting or doubling-down"""
 
-import random
 import time
 
-from game_utils import display_game_history, enumerate_states
-
-CARDS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
-
-# game result codes
-PLAYER_WIN = 1
-DRAW_GAME = 0
-PLAYER_LOSE = -1
-
-
-def draw_card():
-    """Draw a random card (no suits) from an infinite deck of cards
-
-    Returns
-    -------
-    str
-    """
-    return random.choice(CARDS)
-
-
-def get_hand_value(hand, ace_equals_one=False):
-    """Get the blackjack value of a hand
-
-    Parameters
-    ----------
-    hand: list[str]
-        A list of the string card identifiers
-    ace_equals_one: bool, optional
-        If true, then all Aces will be counted as ones
-
-    Returns
-    -------
-    int
-        The integer hand value (highest value is returned without going over 21 if an ace is present)
-    """
-    hand_value = 0
-    has_ace = False
-    for card in hand:
-        try:
-            card_value = int(card)
-        except ValueError:
-            if card == 'A':
-                has_ace = True
-                card_value = 1
-            else:
-                card_value = 10
-        hand_value += card_value
-    if has_ace and not ace_equals_one:
-        alt_hand_value = hand_value + 10
-        if alt_hand_value <= 21:
-            return alt_hand_value
-    return hand_value
-
-
-def has_usable_ace(hand):
-    """Checks if a hand contains a usable ace (one that can be counted as an 11 without busting)
-
-    Parameters
-    ----------
-    hand: list[str]
-
-    Returns
-    -------
-    bool
-    """
-    has_ace = any(card == 'A' for card in hand)
-    hand_value = get_hand_value(hand, ace_equals_one=True)
-    return has_ace and (hand_value + 10 <= 21)
-
-
-def check_blackjack(hand):
-    return get_hand_value(hand) == 21
-
-
-def check_bust(hand):
-    return get_hand_value(hand) > 21
-
-
-def check_under_17(hand):
-    return get_hand_value(hand) < 17
-
-
-def print_result(game_result):
-    if game_result == PLAYER_WIN:
-        print('Congratulations, you won!')
-    elif game_result == PLAYER_LOSE:
-        print('Sorry, you lost!')
-    elif game_result == DRAW_GAME:
-        print('It looks like you tied!')
-    print()
+from game_utils import *
 
 
 class AbstractBlackjackGame:
@@ -203,19 +113,11 @@ class AutoBlackjackGame(AbstractBlackjackGame):
         self.policy = policy
         self.state_to_id = enumerate_states()
 
-    def get_state_id(self):
-        """Get the ID of the current state
-
-        Returns
-        -------
-        int or None
-            A None is returned if the state is trivial (i.e. not an official state in the state-action value table)
-        """
-        player_hand_value = self.get_player_hand_value()
-        dealer_card_value = self.get_visible_dealer_value()
+    def get_current_state(self):
+        player_value = self.get_player_hand_value()
+        visible_dealer_value = self.get_visible_dealer_value()
         usable_ace = has_usable_ace(self.player_hand)
-        state = (player_hand_value, dealer_card_value, usable_ace)
-        return self.state_to_id[state]
+        return player_value, visible_dealer_value, usable_ace
 
     def play(self):
         # deal the starting cards
@@ -230,8 +132,9 @@ class AutoBlackjackGame(AbstractBlackjackGame):
         else:
             end_turn = False
             while not end_turn:
-                states.append(self.get_state_id())
-                hit_me = self.policy(states[-1])
+                curr_state = self.get_current_state()
+                hit_me = self.policy(curr_state)
+                states.append(curr_state)
                 actions.append(hit_me)
                 rewards.append(0)
 
@@ -270,10 +173,17 @@ class AutoBlackjackGame(AbstractBlackjackGame):
 
 
 if __name__ == '__main__':
-    # game = InteractiveBlackjackGame()
-    # result = game.play()
-    # print_result(result)
-    #
-    game = AutoBlackjackGame(lambda x: False)
-    history = game.play()
-    display_game_history(*history)
+    game = InteractiveBlackjackGame()
+    result = game.play()
+    print_result(result)
+
+    # game = AutoBlackjackGame(lambda x: random.choice([True, False]))
+    # history = game.play()
+    # states = history[0]
+    # actions = history[1]
+    # rewards = history[2]
+    # for s, a, r in zip(states, actions, rewards):
+    #     print(s.get_state_tuple())
+    #     print(a)
+    #     print(r)
+    #     print()

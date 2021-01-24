@@ -1,42 +1,59 @@
 from collections import defaultdict
+import json
 
 import numpy as np
 from tqdm import tqdm
 
 from blackjack_game import AutoBlackjackGame
-from game_utils import enumerate_states, get_all_states
+from game_utils import *
+
+N_STATES = 180
+N_ACTIONS = 2
+N_EPISODES = 500000
+
+
+def nontrivial_state(state):
+    player_value, *_ = state
+    return 11 < player_value < 21
+
+
+def random_prob_init(shape):
+    probs = np.random.rand(*shape)
+    probs /= probs.sum(axis=1).reshape((-1, 1))
+    return probs
 
 
 class BlackjackPolicy:
     def __init__(self):
-        self.states = get_all_states()
+        self.soft_policy_fn = random_prob_init((N_STATES, N_ACTIONS))
+        self.state_to_idx = enumerate_states()
 
-        # mask the trivial states
-        trivial_mask = []
-        for player_hand_value, *_ in self.states:
-            trivial_mask.append(player_hand_value < 12)
-        self.trivial_mask = np.array(trivial_mask)
+    def __call__(self, state):
+        """Choose an action given a state
 
-        # a probability function given an input state and action
-        self.soft_policy_fn = np.zeros((len(self.states), 2))
+        Parameters
+        ----------
+        state: tuple
 
-        # always choose to hit given a trivial state (value less than 12)
-        self.soft_policy_fn[self.trivial_mask, 1] = 1.0
-
-        # random probability distributions over the non-trivial states
-        n_nontrivial = len(self.states) - self.trivial_mask.sum()
-        self.soft_policy_fn[~self.trivial_mask] = np.random.rand(n_nontrivial, 2)
-        self.soft_policy_fn /= self.soft_policy_fn.sum(axis=1).reshape(-1, 1)
-
-    def __call__(self, state_id):
-        player_hand_value, *_ = self.states[state_id]
-        if player_hand_value < 12:
+        Returns
+        -------
+        bool
+            If true then hit, else stick
+        """
+        player_value, *_ = state
+        # fixed policy when player hand value is less than 12 (always hit)
+        if player_value < 12:
             return True
-        elif player_hand_value == 21:
+        # always stick on a blackjack
+        if player_value == 21:
             return False
-        else:
-            action_probs = self.soft_policy_fn[state_id]
+        # otherwise use the soft policy function
+        idx = self.state_to_idx.get(state)
+        if idx is not None:
+            action_probs = self.soft_policy_fn[idx]
             return np.random.choice([False, True], p=action_probs)
+        else:
+            raise ValueError(f'Invalid State: {state}')
 
 
 class OnPolicyMonteCarlo:
@@ -44,64 +61,75 @@ class OnPolicyMonteCarlo:
         # initiate the game and policy
         self.policy = BlackjackPolicy()
         self.game = AutoBlackjackGame(self.policy)
+        self.state_to_idx = enumerate_states()
 
-        # gather the set of trivial states (i.e. always choose to hit on these states)
-        self.trivial_states = set()
-        for (player_hand_value, *_), i in enumerate_states().items():
-            if player_hand_value < 12:
-                self.trivial_states.add(i)
-
-    def __call__(self, n_episodes, eps=0.01):
-        n_states = len(get_all_states())
-        n_actions = 2  # hit or stick
-        q_table = np.zeros((n_states, n_actions))
+    def run(self, n_episodes, eps=0.01):
+        q_table = np.zeros((N_STATES, N_ACTIONS))
         returns = defaultdict(list)
 
-        n_played = 0
-        # while n_played < n_episodes:
-        for _ in tqdm(range(n_episodes)):
+        for _ in tqdm(range(n_episodes), desc='On-policy Monte Carlo'):
+
             # get the game history (sequence of states, actions, and rewards taken)
             states, actions, rewards = self.game.play()
             state_action_pairs = list(zip(states, actions))
 
-            # old_probs = self.policy.soft_policy_fn.copy()
-            # print(states)
-            # print(actions)
-            # print(rewards)
-            # print()
-
             if len(states) > 0:
-                n_played += 1
-
                 g = 0
                 for i in -np.arange(len(states))[::-1]:
+                    # print(i)
                     s_i = states[i]
                     a_i = actions[i]
                     r_i = rewards[i]
-
-                    if s_i not in self.trivial_states:
+                    pair = (s_i, a_i)
+                    if nontrivial_state(s_i):
                         g += r_i
-                        if (s_i, a_i) not in state_action_pairs[:i]:
-                            returns[(s_i, a_i)].append(g)
-                            q_table[s_i, a_i] = np.mean(returns[(s_i, a_i)])
-                            optimal_action = np.argmax(q_table[s_i, :])
+                        if pair not in state_action_pairs[:i]:
+                            state_idx = self.state_to_idx[s_i]
+                            action_idx = int(a_i)
+
+                            returns[pair].append(g)
+                            q_table[state_idx, action_idx] = np.mean(returns[pair])
+                            optimal_action = np.argmax(q_table[state_idx, :])
 
                             for a in (0, 1):
                                 if a == optimal_action:
                                     update = 1 - (eps / 2)
                                 else:
                                     update = eps / 2
-                                self.policy.soft_policy_fn[s_i, a] = update
+                                self.policy.soft_policy_fn[state_idx, int(a)] = update
+        return q_table
+
+
+def main():
+    monte_carlo = OnPolicyMonteCarlo()
+    action_values = monte_carlo.run(N_EPISODES)
+
+    # store the policy
+    optimal_policy_json = []
+    states = get_all_states()
+    for (player_val, dealer_val, usable_ace), (p_stick, p_hit) in zip(states, monte_carlo.policy.soft_policy_fn):
+        optimal_policy_json.append({
+            'player_hand_value': player_val,
+            'dealer_card_value': dealer_val,
+            'usable_ace': usable_ace,
+            'hit': bool(p_hit > p_stick)
+        })
+    with open('optimal-policy.json', 'w') as file:
+        json.dump(optimal_policy_json, file)
+
+    # store the action-value table
+    optimal_action_value_json = []
+    for (player_val, dealer_val, usable_ace), (q_stick, q_hit) in zip(states, action_values):
+        optimal_action_value_json.append({
+            'player_hand_value': player_val,
+            'dealer_card_value': dealer_val,
+            'usable_ace': usable_ace,
+            'q_stick': q_stick,
+            'q_hit': q_hit
+        })
+    with open('optimal-action-values.json', 'w') as file:
+        json.dump(optimal_action_value_json, file)
 
 
 if __name__ == '__main__':
-    mc = OnPolicyMonteCarlo()
-    mc(10000)
-    print(mc.policy.soft_policy_fn)
-
-    # state_space = get_all_states()
-    # policy_fn = BlackjackPolicy()
-    # for state in state_space:
-    #     print(state)
-    #     print(policy_fn(state))
-    #     print()
+    main()
