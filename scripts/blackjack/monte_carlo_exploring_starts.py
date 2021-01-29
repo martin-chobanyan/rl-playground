@@ -11,7 +11,7 @@ from game_utils import *
 
 N_STATES = 180
 N_ACTIONS = 2
-N_EPISODES = 500000
+N_EPISODES = 2000000
 
 
 def nontrivial_state(state):
@@ -23,6 +23,16 @@ def random_prob_init(shape):
     probs = np.random.rand(*shape)
     probs /= probs.sum(axis=1).reshape((-1, 1))
     return probs
+
+
+class ReturnsAverage:
+    def __init__(self):
+        self.avg = 0
+        self.count = 0
+
+    def add_return(self, r):
+        self.avg = (self.count * self.avg + r) / (self.count + 1)
+        self.count += 1
 
 
 class BlackjackPolicy:
@@ -60,7 +70,7 @@ class OnPolicyMonteCarlo:
 
     def run(self, n_episodes):
         q_table = np.zeros((N_STATES, N_ACTIONS))
-        returns = defaultdict(list)
+        returns = defaultdict(ReturnsAverage)
 
         for _ in tqdm(range(n_episodes), desc='Monte Carlo with exploring starts'):
 
@@ -82,8 +92,8 @@ class OnPolicyMonteCarlo:
                             state_idx = self.state_to_idx[s_i]
                             action_idx = int(a_i)
 
-                            returns[pair].append(g)
-                            q_table[state_idx, action_idx] = np.mean(returns[pair])
+                            returns[pair].add_return(g)
+                            q_table[state_idx, action_idx] = returns[pair].avg
                             self.policy.policy_dict[s_i] = bool(np.argmax(q_table[state_idx, :]))
         return q_table
 
